@@ -1,0 +1,55 @@
+#compdef gwt
+# zsh completion for gwt. The candidates come from helpers defined in gwt.sh,
+# so nothing is offered unless gwt.sh has been sourced.
+
+local -a items
+local expl
+
+if (( CURRENT == 2 )); then
+  items=(
+    'init:create an empty workspace'
+    'clone:clone a repo into a new workspace'
+    'add:create a worktree for a branch'
+    'rm:remove a worktree and delete its branch'
+    'switch:cd to a worktree'
+    'help:show help'
+    'list:list worktrees (git worktree list)'
+    'lock:lock a worktree (git worktree lock)'
+    'move:move a worktree (git worktree move)'
+    'prune:prune stale worktree information (git worktree prune)'
+    'repair:repair worktree administrative files (git worktree repair)'
+    'unlock:unlock a worktree (git worktree unlock)'
+  )
+  _describe -t commands 'gwt command' items
+  return
+fi
+
+case $words[2] in
+  switch|rm)
+    if [[ $words[2] == rm && $words[CURRENT] == -* ]]; then
+      items=(-f --force)
+      _wanted options expl 'option' compadd -a items
+      return
+    fi
+    [[ $words[2] == rm ]] || (( CURRENT == 3 )) || return 1
+    items=(${(f)"$(_gwt_worktrees 2>/dev/null)"})
+    _wanted worktrees expl 'worktree' compadd -a items
+    ;;
+  add)
+    (( CURRENT == 3 )) || return 1
+    items=(${(f)"$(_gwt_remote_branches 2>/dev/null)"})
+    _wanted branches expl 'remote branch' compadd -a items
+    ;;
+  init)
+    (( CURRENT == 3 )) && _directories
+    ;;
+  clone|help|-h|--help)
+    return 1
+    ;;
+  *)
+    # Pass-through subcommands complete as `git worktree <subcommand> ...`.
+    words=(git worktree "${(@)words[2,-1]}")
+    (( CURRENT++ ))
+    _normal
+    ;;
+esac
