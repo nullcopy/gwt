@@ -74,7 +74,7 @@ gone() { # gone <branch>: its worktree is gone, and its local branch is kept
 }
 
 # --- two remotes. origin's default branch is `trunk` (so nothing can assume
-# `main`); it also has on-remote, spare, feat/remote and shared. fork has
+# `main`); it also has on-remote, spare, via-switch, feat/remote and shared. fork has
 # forked and shared. $seed is a plain repository used to push to both.
 remote=$tmp/remote.git fork=$tmp/fork.git seed=$tmp/seed ws=$tmp/remote
 git init -q --bare -b trunk "$remote"
@@ -83,12 +83,13 @@ git init -q -b trunk "$seed"
 git -C "$seed" remote add origin "$remote"
 commit "$seed" one
 git -C "$seed" branch spare
+git -C "$seed" branch via-switch
 git -C "$seed" branch feat/remote
 git -C "$seed" branch shared
 git -C "$seed" switch -q -c on-remote
 commit "$seed" two
 git -C "$seed" switch -q trunk
-git -C "$seed" push -q origin trunk spare feat/remote shared on-remote
+git -C "$seed" push -q origin trunk spare via-switch feat/remote shared on-remote
 git -C "$seed" push -q "$fork" trunk shared trunk:forked
 
 # --- sourcing: an existing `gwt` alias is replaced by the function
@@ -120,7 +121,7 @@ said "not in a gwt workspace"
 no "remove in a plain repo fails" gwt remove trunk
 said "not in a gwt workspace"
 is "no worktree candidates outside a workspace" "$(_gwt_worktrees 2>&1)" ""
-is "no branch candidates outside a workspace" "$(_gwt_remote_branches 2>&1)" ""
+is "no branch candidates outside a workspace" "$(_gwt_branches 2>&1)" ""
 
 # --- clone
 cd "$tmp" || exit 1
@@ -176,15 +177,26 @@ is "add: fetched branch is tracked" \
 
 # A new branch starts at the current HEAD, like `git switch -c`.
 cd "$ws/on-remote" || exit 1
-ok "add: new branch, inside a worktree" gwt add new
-is "add: new branch starts at that worktree's HEAD" \
+no "add: a name that is not a branch fails" gwt add new
+said "gwt add -c new"
+no "add: a name that is not a branch creates nothing" [ -e "$ws/new" ]
+ok "add -c: new branch, inside a worktree" gwt add -c new
+is "add -c: does not cd" "$PWD" "$ws/on-remote"
+is "add -c: new branch starts at that worktree's HEAD" \
   "$(git -C "$ws" rev-parse new)" "$(git -C "$ws" rev-parse on-remote)"
-no "add: new branch has no upstream" \
+no "add -c: new branch has no upstream" \
   git -C "$ws" rev-parse --verify --quiet 'new@{upstream}'
 cd "$ws" || exit 1
-ok "add: new branch, at the workspace root" gwt add from-root
-is "add: new branch starts at the default branch" \
+ok "add -c: new branch, at the workspace root" gwt add -c from-root
+is "add -c: new branch starts at the default branch" \
   "$(git -C "$ws" rev-parse from-root)" "$(git -C "$ws" rev-parse trunk)"
+no "add -c: existing branch fails" gwt add -c on-remote
+said "already exists"
+no "add -c: no name" gwt add -c
+no "add: -c after the branch" gwt add other -c
+no "add: too many arguments" gwt add -c other trunk extra
+no "add: unknown flag" gwt add -x other
+no "add: bad arguments create nothing" [ -e "$ws/other" ]
 
 git -C "$ws" branch --no-track local-only origin/on-remote
 ok "add: existing local branch" gwt add local-only
@@ -211,12 +223,41 @@ ok "add: qualified name resolves the ambiguity" gwt add fork/shared
 is "add: qualified name tracks the named remote" \
   "$(git -C "$ws" rev-parse --abbrev-ref 'shared@{upstream}')" "fork/shared"
 
-# --- switch
+# --- switch: an existing worktree
 cd "$ws/trunk/sub" || exit 1
 ok "switch" gwt switch on-remote
 is "switch: changes directory" "$PWD" "$ws/on-remote"
-no "switch: unknown branch fails" gwt switch nope
+no "switch: a name that is not a branch fails" gwt switch nope
+said "gwt switch -c nope"
 is "switch: stays put on failure" "$PWD" "$ws/on-remote"
+no "switch: a name that is not a branch creates nothing" [ -e "$ws/nope" ]
+no "switch: no arguments" gwt switch
+no "switch: too many arguments" gwt switch trunk late
+is "switch: stays put on bad arguments" "$PWD" "$ws/on-remote"
+
+# --- switch: a branch without a worktree gets one
+ok "switch: branch on one remote" gwt switch via-switch
+is "switch: changes directory to the new worktree" "$PWD" "$ws/via-switch"
+is "switch: remote branch is tracked" \
+  "$(git -C "$ws" rev-parse --abbrev-ref 'via-switch@{upstream}')" "origin/via-switch"
+
+# --- switch -c. A new branch starts at the current HEAD, like `git switch -c`.
+cd "$ws/on-remote" || exit 1
+ok "switch -c" gwt switch -c created
+is "switch -c: changes directory" "$PWD" "$ws/created"
+is "switch -c: new branch starts at the HEAD it was run from" \
+  "$(git -C "$ws" rev-parse created)" "$(git -C "$ws" rev-parse on-remote)"
+ok "switch -c <new> <start>" gwt switch -c started trunk
+is "switch -c <new> <start>: changes directory" "$PWD" "$ws/started"
+is "switch -c <new> <start>: new branch starts there" \
+  "$(git -C "$ws" rev-parse started)" "$(git -C "$ws" rev-parse trunk)"
+ok "switch --create" gwt switch --create long-flag 'HEAD'
+is "switch --create: <start> is resolved in the current worktree" \
+  "$(git -C "$ws" rev-parse long-flag)" "$(git -C "$ws" rev-parse started)"
+no "switch -c: existing branch fails" gwt switch -c trunk
+said "already exists"
+is "switch -c: stays put on failure" "$PWD" "$ws/long-flag"
+no "switch -c: no name" gwt switch -c
 cd "$ws" || exit 1
 ok "switch: from the workspace root" gwt switch trunk
 is "switch: from the workspace root, directory" "$PWD" "$ws/trunk"
@@ -224,6 +265,12 @@ is "switch: from the workspace root, directory" "$PWD" "$ws/trunk"
 # --- remove: the worktree goes, the branch stays
 ok "remove" gwt remove from-root
 gone from-root
+ok "remove: worktrees made by switch" eval \
+  'gwt remove via-switch && gwt remove created && gwt remove started && gwt remove long-flag'
+gone via-switch
+gone created
+gone started
+gone long-flag
 ok "remove: tracking branches" \
   eval 'gwt remove late && gwt remove forked && gwt remove spare && gwt remove shared'
 gone late
@@ -245,7 +292,7 @@ ok "remove: again" gwt remove new
 gone new
 
 # --- remove: uncommitted changes, run from inside the worktree
-ok "add dirty" gwt add dirty
+ok "add dirty" gwt add -c dirty
 cd "$ws/dirty" || exit 1
 echo change >>one
 no "remove: refuses uncommitted changes" gwt remove dirty
@@ -257,7 +304,7 @@ gone dirty
 is "remove: from inside the worktree, ends at the root" "$PWD" "$ws"
 
 # --- remove: untracked files
-ok "add untracked" gwt add untracked
+ok "add untracked" gwt add -c untracked
 echo new >"$ws/untracked/new-file"
 no "remove: refuses untracked files" gwt remove untracked
 said "--force"
@@ -266,7 +313,7 @@ ok "remove <branch> --force: untracked files" gwt remove untracked --force
 gone untracked
 
 # --- remove: a locked worktree needs -f twice, as in git
-ok "add locked" gwt add locked
+ok "add locked" gwt add -c locked
 git -C "$ws" worktree lock "$ws/locked"
 no "remove: refuses a locked worktree" gwt remove locked
 no "remove -f: refuses a locked worktree" gwt remove -f locked
@@ -275,7 +322,7 @@ ok "remove -f -f: a locked worktree" gwt remove -f -f locked
 gone locked
 
 # --- remove: a worktree that has another branch checked out
-ok "add moved" gwt add moved
+ok "add moved" gwt add -c moved
 git -C "$ws/moved" switch -q --detach
 ok "remove: a worktree that is not on its branch" gwt remove moved
 gone moved
@@ -299,7 +346,7 @@ cd "$ws/trunk" || exit 1
 ok "slash: add remote branch" gwt add feat/remote
 is "slash: remote branch is tracked" \
   "$(git -C "$ws" rev-parse --abbrev-ref 'feat/remote@{upstream}')" "origin/feat/remote"
-ok "slash: add new branch" gwt add feat/new
+ok "slash: add new branch" gwt add -c feat/new
 ok "slash: worktree path is the branch name" [ -e "$ws/feat/new/.git" ]
 ok "slash: switch" gwt switch feat/new
 is "slash: switch directory" "$PWD" "$ws/feat/new"
@@ -311,7 +358,7 @@ is "slash: worktree candidates" "$(_gwt_worktrees | sort)" \
 ok "slash: remove the last one" gwt remove feat/remote
 gone feat/remote
 no "slash: remove removes the empty parent" [ -e "$ws/feat" ]
-ok "slash: add nested" gwt add a/b/c
+ok "slash: add nested" gwt add -c a/b/c
 ok "slash: remove nested" gwt remove a/b/c
 no "slash: remove removes all empty parents" [ -e "$ws/a" ]
 
@@ -329,9 +376,10 @@ cd "$ws/trunk/sub" || exit 1
 is "candidates: worktrees" "$(_gwt_worktrees | sort)" \
   "$(printf '%s\n' local-only on-remote trunk)"
 git -C "$seed" push -q origin trunk:unfetched
-is "candidates: branches of every remote without a worktree, without fetching" \
-  "$(_gwt_remote_branches | sort -u)" \
-  "$(printf '%s\n' feat/remote forked late shared spare)"
+is "candidates: branches without a worktree, local or on a remote, without fetching" \
+  "$(_gwt_branches)" \
+  "$(printf '%s\n' a/b/c created dirty feat/new feat/remote forked from-root late \
+    locked long-flag moved new shared spare started untracked via-switch)"
 
 # --- init: a workspace with no remote at all
 cd "$tmp" || exit 1
@@ -348,12 +396,12 @@ mkdir "$tmp/here"
 cd "$tmp/here" || exit 1
 ok "init: current directory" gwt init
 ok "init: current directory, worktree" [ -e "$tmp/here/not-the-default/.git" ]
-ok "init: add before the first commit" gwt add second
+ok "init: add before the first commit" gwt add -c second
 ok "init: add before the first commit, worktree" [ -e "$tmp/here/second/.git" ]
 
 cd "$ws/not-the-default" || exit 1
 commit "$ws/not-the-default" first
-ok "no remote: add" gwt add topic
+ok "no remote: add" gwt add -c topic
 is "no remote: new branch starts at the current HEAD" \
   "$(git -C "$ws" rev-parse topic)" "$(git -C "$ws" rev-parse not-the-default)"
 ok "no remote: switch" gwt switch topic
@@ -363,7 +411,10 @@ ok "no remote: remove" gwt remove topic
 gone topic
 is "no remote: remove from inside ends at the root" "$PWD" "$ws"
 is "no remote: worktree candidates" "$(_gwt_worktrees)" "not-the-default"
-is "no remote: no remote branch candidates" "$(_gwt_remote_branches)" ""
+is "no remote: branch candidates" "$(_gwt_branches)" "topic"
+ok "no remote: switch brings the worktree back" gwt switch topic
+is "no remote: switch to a local branch, directory" "$PWD" "$ws/topic"
+ok "no remote: the worktree is back with its commits" [ -f "$ws/topic/work" ]
 
 # --- zsh only: the completion file and the plugin entry point
 if [ -n "${ZSH_VERSION-}" ]; then

@@ -12,14 +12,16 @@ _gwt_help() {
   printf '%s\n' 'gwt - git worktree wrappers for the .bare workspace layout
 
 Usage:
-  gwt init [<dir>]           Create an empty workspace
-  gwt clone <url> [<dir>]    Clone a repo into a new workspace
-  gwt add <branch>           Create a worktree for <branch>
-  gwt remove [-f] <branch>   Remove a worktree, keeping its branch
-  gwt switch <branch>        cd to a worktree
-  gwt help                   Show this help
-  gwt <other> [<args>...]    Passed through to `git worktree`
-                             (list, move, prune, repair, lock, ...)
+  gwt init [<dir>]                 Create an empty workspace
+  gwt clone <url> [<dir>]          Clone a repo into a new workspace
+  gwt switch <branch>              cd to a worktree, creating it if needed
+  gwt switch -c <new> [<start>]    Create a branch and its worktree; cd to it
+  gwt add <branch>                 Like switch, but stay where you are
+  gwt add -c <new> [<start>]
+  gwt remove [-f] <branch>         Remove a worktree, keeping its branch
+  gwt help                         Show this help
+  gwt <other> [<args>...]          Passed through to `git worktree`
+                                   (list, move, prune, repair, lock, ...)
 
 Commands:
   init    Creates <dir>/.bare, a .git file pointing at it, and a worktree
@@ -29,19 +31,27 @@ Commands:
   clone   Creates <dir>/.bare, a .git file pointing at it, and a worktree
           for the default branch. <dir> defaults to the repo name.
 
-  add     Creates <root>/<branch>. Checks out the local branch if it
-          exists; otherwise the remote branch, given as <remote>/<branch>
-          or found on exactly one remote; otherwise creates <branch> from
-          the current HEAD. Never fetches. Works from anywhere in the
+  switch  Changes directory to <root>/<branch>. If <branch> has no
+          worktree, creates it first, resolving the name as `git switch`
+          does: the local branch if it exists; otherwise the remote
+          branch, given as <remote>/<branch> or found on exactly one
+          remote, as a new local branch that tracks it. Fails if there
+          is no such branch. Never fetches. Works from anywhere in the
           workspace.
+
+          With -c, creates the branch <new> and its worktree, like
+          `git switch -c`. <new> starts at <start>, or at the current
+          HEAD. Fails if <new> already exists.
+
+  add     Takes the same arguments as switch and creates the same
+          worktree, without changing directory. Fails if the worktree
+          already exists.
 
   remove  Removes <root>/<branch> with `git worktree remove`, which
           refuses if the worktree has uncommitted changes or untracked
           files. With -f, removes it anyway and those changes are lost.
           The branch is kept: delete it with `git branch -d`, or get the
-          worktree back with `gwt add`.
-
-  switch  Changes directory to <root>/<branch>.
+          worktree back with `gwt switch`.
 
 Layout:
   <root>/
@@ -51,14 +61,15 @@ Layout:
     <branch>/
 
 Completion:
-  switch, remove   existing worktrees
-  add              remote branches without a worktree
+  switch   worktrees, and branches without a worktree
+  add      branches without a worktree
+  remove   worktrees
 
 Examples:
   gwt clone git@github.com:user/repo.git
-  gwt add fix-parser
-  gwt add jimmys-fork/jimmys-feature
-  gwt switch fix-parser
+  gwt switch -c fix-parser
+  gwt switch jimmys-fork/jimmys-feature
+  gwt add release-1.2
   gwt remove fix-parser
   gwt list'
 }
@@ -115,30 +126,41 @@ _gwt_clone() {
   _gwt_err "clone failed"
 }
 
-_gwt_add() {
-  local branch="${1-}" root start=''
-  [ $# -eq 1 ] && [ -n "$branch" ] || _gwt_err "usage: gwt add [<remote>/]<branch>" || return 1
+# switch and add: $1 is which. Both make sure the worktree exists; only
+# switch changes directory, and only switch accepts an existing worktree.
+_gwt_switch() {
+  local cmd="$1" create='' max=1 branch root start
+  shift
+  case ${1-} in -c|--create) create=1 max=2; shift ;; esac
+  branch=${1-}
+  [ -n "$branch" ] && [ "${branch#-}" = "$branch" ] && [ $# -le "$max" ] ||
+    _gwt_err "usage: gwt $cmd (<branch> | -c <new> [<start>])" || return 1
   root=$(_gwt_root) || return 1
+  if [ -n "$create" ]; then
+    shift
+    # No -C: like `git switch -c`, the new branch starts at the current HEAD,
+    # and <start> means what it means in the current worktree.
+    git worktree add -b "$branch" "$root/$branch" "$@" || return 1
+  elif [ -e "$root/$branch/.git" ]; then
+    [ "$cmd" = switch ] ||
+      _gwt_err "worktree already exists: $root/$branch" || return 1
   # Resolve the name as `git switch` would: local branch, then remote branch.
-  if ! git -C "$root" show-ref --verify --quiet "refs/heads/$branch"; then
+  elif git -C "$root" show-ref --verify --quiet "refs/heads/$branch"; then
+    git -C "$root" worktree add "$root/$branch" "$branch" || return 1
+  else
     if git -C "$root" show-ref --verify --quiet "refs/remotes/$branch"; then
       start=$branch branch=${branch#*/}
     else
       start=$(git -C "$root" for-each-ref --format='%(refname:lstrip=2)' "refs/remotes/*/$branch")
-      case $start in *[[:space:]]*)
-        _gwt_err "'$branch' is on several remotes; use <remote>/$branch"; return 1 ;;
+      case $start in
+        '') _gwt_err "no branch '$branch' (to create it: gwt $cmd -c $branch)"; return 1 ;;
+        *[[:space:]]*) _gwt_err "'$branch' is on several remotes; use <remote>/$branch"; return 1 ;;
       esac
     fi
+    git -C "$root" worktree add --track -b "$branch" "$root/$branch" "$start" || return 1
   fi
-  [ ! -e "$root/$branch" ] || _gwt_err "worktree already exists: $root/$branch" || return 1
-  if [ -n "$start" ]; then
-    git -C "$root" worktree add --track -b "$branch" "$root/$branch" "$start"
-  elif git -C "$root" show-ref --verify --quiet "refs/heads/$branch"; then
-    git -C "$root" worktree add "$root/$branch" "$branch"
-  else
-    # No -C: like `git switch -c`, the new branch starts at the current HEAD.
-    git worktree add -b "$branch" "$root/$branch"
-  fi
+  [ "$cmd" = switch ] || return 0
+  builtin cd "$root/$branch"
 }
 
 _gwt_remove() {
@@ -165,14 +187,6 @@ _gwt_remove() {
   done
 }
 
-_gwt_switch() {
-  local root
-  [ $# -eq 1 ] || _gwt_err "usage: gwt switch <branch>" || return 1
-  root=$(_gwt_root) || return 1
-  [ -e "$root/$1/.git" ] || _gwt_err "no worktree for '$1'" || return 1
-  builtin cd "$root/$1"
-}
-
 # Completion candidates, one per line, for any shell's completion to use.
 # They never fetch, and print nothing outside a workspace.
 _gwt_worktrees() {
@@ -186,20 +200,26 @@ _gwt_worktrees() {
   done
 }
 
-_gwt_remote_branches() {
+# Branches without a worktree, local or on any remote.
+_gwt_branches() {
   local root ref
   root=$(_gwt_root 2>/dev/null) || return 1
-  git -C "$root" for-each-ref --format='%(refname:lstrip=3)' refs/remotes |
+  git -C "$root" for-each-ref --format='%(refname)' refs/heads refs/remotes |
     while IFS= read -r ref; do
+      case $ref in
+        refs/heads/*) ref=${ref#refs/heads/} ;;
+        *) ref=${ref#refs/remotes/*/} ;;
+      esac
       [ "$ref" = HEAD ] || [ -e "$root/$ref" ] || printf '%s\n' "$ref"
-    done
+    done | sort -u
 }
 
 gwt() {
   local cmd="${1-help}"
   case $cmd in
     help|-h|--help) _gwt_help ;;
-    init|clone|add|remove|switch) shift; "_gwt_$cmd" "$@" ;;
+    init|clone|remove) shift; "_gwt_$cmd" "$@" ;;
+    add|switch) _gwt_switch "$@" ;;
     *) git worktree "$@" ;;
   esac
 }
