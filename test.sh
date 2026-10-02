@@ -118,7 +118,7 @@ no "add in a plain repo fails" gwt add x
 said "not in a gwt workspace"
 no "switch in a plain repo fails" gwt switch trunk
 said "not in a gwt workspace"
-no "rm in a plain repo fails" gwt rm trunk
+no "remove in a plain repo fails" gwt remove trunk
 said "not in a gwt workspace"
 is "no worktree candidates outside a workspace" "$(_gwt_worktrees 2>&1)" ""
 is "no branch candidates outside a workspace" "$(_gwt_remote_branches 2>&1)" ""
@@ -222,94 +222,94 @@ cd "$ws" || exit 1
 ok "switch: from the workspace root" gwt switch trunk
 is "switch: from the workspace root, directory" "$PWD" "$ws/trunk"
 
-# --- rm: clean branches, by `git branch -d`'s rule
-ok "rm: no upstream, merged into the default branch" gwt rm from-root
+# --- remove: clean branches, by `git branch -d`'s rule
+ok "remove: no upstream, merged into the default branch" gwt remove from-root
 gone from-root
-ok "rm: equal to its upstream" gwt rm late
+ok "remove: equal to its upstream" gwt remove late
 gone late
-ok "rm: equal to its upstream on another remote" gwt rm forked
+ok "remove: equal to its upstream on another remote" gwt remove forked
 gone forked
-ok "rm: remaining tracking branches" eval 'gwt rm spare && gwt rm shared'
+ok "remove: remaining tracking branches" eval 'gwt remove spare && gwt remove shared'
 gone spare
 gone shared
 # `new` started at on-remote, which is ahead of trunk, and has no upstream.
-no "rm: refuses no upstream, not merged into the default branch" gwt rm new
-said "gwt rm -f new"
+no "remove: refuses no upstream, not merged into the default branch" gwt remove new
+said "gwt remove -f new"
 kept new
-ok "rm -f: not merged" gwt rm -f new
+ok "remove -f: not merged" gwt remove -f new
 gone new
 
-# --- rm: uncommitted changes, run from inside the worktree
+# --- remove: uncommitted changes, run from inside the worktree
 ok "add dirty" gwt add dirty
 cd "$ws/dirty" || exit 1
 echo change >>one
-no "rm: refuses uncommitted changes" gwt rm dirty
-said "gwt rm -f dirty"
+no "remove: refuses uncommitted changes" gwt remove dirty
+said "gwt remove -f dirty"
 kept dirty
-is "rm: refusal does not cd" "$PWD" "$ws/dirty"
-ok "rm -f: uncommitted changes" gwt rm -f dirty
+is "remove: refusal does not cd" "$PWD" "$ws/dirty"
+ok "remove -f: uncommitted changes" gwt remove -f dirty
 gone dirty
-is "rm: from inside the worktree, ends at the root" "$PWD" "$ws"
+is "remove: from inside the worktree, ends at the root" "$PWD" "$ws"
 
-# --- rm: untracked files
+# --- remove: untracked files
 ok "add untracked" gwt add untracked
 echo new >"$ws/untracked/new-file"
-no "rm: refuses untracked files" gwt rm untracked
-said "gwt rm -f untracked"
+no "remove: refuses untracked files" gwt remove untracked
+said "gwt remove -f untracked"
 kept untracked
-ok "rm <branch> -f: untracked files" gwt rm untracked -f
+ok "remove <branch> -f: untracked files" gwt remove untracked -f
 gone untracked
 
-# --- rm: unmerged commits, no upstream
+# --- remove: unmerged commits, no upstream
 ok "add unmerged" gwt add unmerged
 commit "$ws/unmerged" work
-no "rm: refuses unmerged commits" gwt rm unmerged
-said "gwt rm -f unmerged"
+no "remove: refuses unmerged commits" gwt remove unmerged
+said "gwt remove -f unmerged"
 kept unmerged
-ok "rm --force: unmerged commits" gwt rm --force unmerged
+ok "remove --force: unmerged commits" gwt remove --force unmerged
 gone unmerged
 
-# --- rm: pushed to its upstream but not merged into the default branch
+# --- remove: pushed to its upstream but not merged into the default branch
 ok "add pushed" gwt add pushed
 commit "$ws/pushed" work
 git -C "$ws/pushed" push -q -u origin pushed
 commit "$ws/pushed" more
-no "rm: refuses commits ahead of the upstream" gwt rm pushed
+no "remove: refuses commits ahead of the upstream" gwt remove pushed
 kept pushed
 git -C "$ws/pushed" push -q origin pushed
-ok "rm: pushed to its upstream" gwt rm pushed
+ok "remove: pushed to its upstream" gwt remove pushed
 gone pushed
 
-# --- rm: no upstream, so only a merge into the default branch counts
+# --- remove: no upstream, so only a merge into the default branch counts
 ok "add merged" gwt add merged
 commit "$ws/merged" merged-file
 git -C "$ws/merged" push -q origin merged
-no "rm: pushed without an upstream is still unmerged" gwt rm merged
+no "remove: pushed without an upstream is still unmerged" gwt remove merged
 kept merged
 git -C "$ws/trunk" merge -q --ff-only merged
-ok "rm: merged into the default branch, inside the worktree" \
-  eval 'mkdir "$ws/merged/deep" && cd "$ws/merged/deep" && gwt rm merged'
+ok "remove: merged into the default branch, inside the worktree" \
+  eval 'mkdir "$ws/merged/deep" && cd "$ws/merged/deep" && gwt remove merged'
 gone merged
-is "rm: from a subdirectory of the worktree, ends at the root" "$PWD" "$ws"
+is "remove: from a subdirectory of the worktree, ends at the root" "$PWD" "$ws"
 
-# --- rm: the default branch, and bad arguments
-no "rm: refuses the default branch" gwt rm trunk
+# --- remove: the default branch, and bad arguments
+no "remove: refuses the default branch" gwt remove trunk
 said "default branch"
-no "rm -f: refuses the default branch" gwt rm -f trunk
+no "remove -f: refuses the default branch" gwt remove -f trunk
 said "default branch"
 kept trunk
-no "rm: unknown branch fails" gwt rm nope
-no "rm: no arguments" gwt rm
-no "rm: unknown flag" gwt rm -x on-remote
+no "remove: unknown branch fails" gwt remove nope
+no "remove: no arguments" gwt remove
+no "remove: unknown flag" gwt remove -x on-remote
 kept on-remote
 
-# --- rm: a worktree that has another branch checked out
+# --- remove: a worktree that has another branch checked out
 ok "add moved" gwt add moved
 git -C "$ws/moved" switch -q --detach
-no "rm: refuses a worktree that is not on its branch" gwt rm moved
-said "gwt rm -f moved"
+no "remove: refuses a worktree that is not on its branch" gwt remove moved
+said "gwt remove -f moved"
 kept moved
-ok "rm -f: worktree not on its branch" gwt rm -f moved
+ok "remove -f: worktree not on its branch" gwt remove -f moved
 gone moved
 
 # --- branch names with slashes
@@ -321,17 +321,17 @@ ok "slash: add new branch" gwt add feat/new
 ok "slash: worktree path is the branch name" [ -e "$ws/feat/new/.git" ]
 ok "slash: switch" gwt switch feat/new
 is "slash: switch directory" "$PWD" "$ws/feat/new"
-ok "slash: rm from inside" gwt rm feat/new
+ok "slash: remove from inside" gwt remove feat/new
 gone feat/new
-ok "slash: rm keeps a parent that is still in use" [ -e "$ws/feat/remote/.git" ]
+ok "slash: remove keeps a parent that is still in use" [ -e "$ws/feat/remote/.git" ]
 is "slash: worktree candidates" "$(_gwt_worktrees | sort)" \
   "$(printf '%s\n' feat/remote local-only on-remote trunk)"
-ok "slash: rm the last one" gwt rm feat/remote
+ok "slash: remove the last one" gwt remove feat/remote
 gone feat/remote
-no "slash: rm removes the empty parent" [ -e "$ws/feat" ]
+no "slash: remove removes the empty parent" [ -e "$ws/feat" ]
 ok "slash: add nested" gwt add a/b/c
-ok "slash: rm nested" gwt rm a/b/c
-no "slash: rm removes all empty parents" [ -e "$ws/a" ]
+ok "slash: remove nested" gwt remove a/b/c
+no "slash: remove removes all empty parents" [ -e "$ws/a" ]
 
 # --- pass-through
 cd "$ws" || exit 1
@@ -377,14 +377,14 @@ is "no remote: new branch starts at the current HEAD" \
 ok "no remote: switch" gwt switch topic
 is "no remote: switch directory" "$PWD" "$ws/topic"
 commit "$ws/topic" work
-no "no remote: rm refuses an unmerged branch" gwt rm topic
-said "gwt rm -f topic"
+no "no remote: remove refuses an unmerged branch" gwt remove topic
+said "gwt remove -f topic"
 kept topic
 git -C "$ws/not-the-default" merge -q --ff-only topic
-ok "no remote: rm a merged branch" gwt rm topic
+ok "no remote: remove a merged branch" gwt remove topic
 gone topic
-is "no remote: rm from inside ends at the root" "$PWD" "$ws"
-no "no remote: rm -f refuses the default branch" gwt rm -f not-the-default
+is "no remote: remove from inside ends at the root" "$PWD" "$ws"
+no "no remote: remove -f refuses the default branch" gwt remove -f not-the-default
 said "default branch"
 is "no remote: worktree candidates" "$(_gwt_worktrees)" "not-the-default"
 is "no remote: no remote branch candidates" "$(_gwt_remote_branches)" ""

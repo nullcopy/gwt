@@ -15,7 +15,7 @@ Usage:
   gwt init [<dir>]           Create an empty workspace
   gwt clone <url> [<dir>]    Clone a repo into a new workspace
   gwt add <branch>           Create a worktree for <branch>
-  gwt rm [-f] <branch>       Remove a worktree and delete its branch
+  gwt remove [-f] <branch>   Remove a worktree and delete its branch
   gwt switch <branch>        cd to a worktree
   gwt help                   Show this help
   gwt <other> [<args>...]    Passed through to `git worktree`
@@ -35,7 +35,7 @@ Commands:
           the current HEAD. Never fetches. Works from anywhere in the
           workspace.
 
-  rm      Removes the worktree and deletes its local branch. Refuses if
+  remove  Removes the worktree and deletes its local branch. Refuses if
           the worktree has uncommitted changes, or the branch is not
           merged into its upstream (into the default branch, if it has no
           upstream). With -f, removes anyway and that work is lost. Never
@@ -51,15 +51,15 @@ Layout:
     <branch>/
 
 Completion:
-  switch, rm   existing worktrees
-  add          remote branches without a worktree
+  switch, remove   existing worktrees
+  add              remote branches without a worktree
 
 Examples:
   gwt clone git@github.com:user/repo.git
   gwt add fix-parser
   gwt add jimmys-fork/jimmys-feature
   gwt switch fix-parser
-  gwt rm fix-parser
+  gwt remove fix-parser
   gwt list'
 }
 
@@ -141,13 +141,13 @@ _gwt_add() {
   fi
 }
 
-_gwt_rm() {
+_gwt_remove() {
   local force='' branch='' count=0 arg root wt target why=''
   for arg in "$@"; do
     case $arg in -f|--force) force=1 ;; *) branch=$arg; count=$((count + 1)) ;; esac
   done
   [ "$count" -eq 1 ] && [ -n "$branch" ] && [ "${branch#-}" = "$branch" ] ||
-    _gwt_err "usage: gwt rm [-f] <branch>" || return 1
+    _gwt_err "usage: gwt remove [-f] <branch>" || return 1
   root=$(_gwt_root) || return 1
   wt=$root/$branch
   [ "$branch" != "$(_gwt_default "$root")" ] ||
@@ -166,7 +166,7 @@ _gwt_rm() {
       why="the branch is not fully merged into '$target'"
     fi
     [ -z "$why" ] || _gwt_err "not removing '$branch': $why" \
-      "(to remove it anyway and lose that work: gwt rm -f $branch)" || return 1
+      "(to remove it anyway and lose that work: gwt remove -f $branch)" || return 1
   fi
   case "$(pwd -P)/" in "$wt"/*) builtin cd "$root" || return 1 ;; esac
   git -C "$root" worktree remove ${force:+--force} "$wt" &&
@@ -211,7 +211,7 @@ gwt() {
   local cmd="${1-help}"
   case $cmd in
     help|-h|--help) _gwt_help ;;
-    init|clone|add|rm|switch) shift; "_gwt_$cmd" "$@" ;;
+    init|clone|add|remove|switch) shift; "_gwt_$cmd" "$@" ;;
     *) git worktree "$@" ;;
   esac
 }

@@ -10,7 +10,7 @@ if (( CURRENT == 2 )); then
     'init:create an empty workspace'
     'clone:clone a repo into a new workspace'
     'add:create a worktree for a branch'
-    'rm:remove a worktree and delete its branch'
+    'remove:remove a worktree and delete its branch'
     'switch:cd to a worktree'
     'help:show help'
     'list:list worktrees (git worktree list)'
@@ -25,13 +25,13 @@ if (( CURRENT == 2 )); then
 fi
 
 case $words[2] in
-  switch|rm)
-    if [[ $words[2] == rm && $words[CURRENT] == -* ]]; then
+  switch|remove)
+    if [[ $words[2] == remove && $words[CURRENT] == -* ]]; then
       items=(-f --force)
       _wanted options expl 'option' compadd -a items
       return
     fi
-    [[ $words[2] == rm ]] || (( CURRENT == 3 )) || return 1
+    [[ $words[2] == remove ]] || (( CURRENT == 3 )) || return 1
     items=(${(f)"$(_gwt_worktrees 2>/dev/null)"})
     _wanted worktrees expl 'worktree' compadd -a items
     ;;
