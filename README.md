@@ -24,6 +24,7 @@ gwt init [<dir>]                 Create an empty workspace
 gwt clone <url> [<dir>]          Clone a repo into a new workspace
 gwt switch <branch>              cd to a worktree, creating it if needed
 gwt switch -c <new> [<start>]    Create a branch and its worktree; cd to it
+gwt switch -                     cd to the previous worktree
 gwt add <branch>                 Like switch, but stay where you are
 gwt add -c <new> [<start>]
 gwt remove [-f] <branch>         Remove a worktree, keeping its branch
@@ -41,7 +42,8 @@ gwt <other> [<args>...]          Passed through to `git worktree`
   `<branch>` when exactly one remote has it. Fetch first if you want the
   latest remote branches. A name that is not a branch is an error;
   `switch -c` creates a new branch, from the current HEAD unless given a
-  start point.
+  start point. `switch -` goes back to the worktree that the last
+  `gwt switch` in this shell left.
 - `add` takes the same arguments and creates the same worktree, but does
   not change directory.
 - `remove` runs `git worktree remove` on `<root>/<branch>`, so it refuses

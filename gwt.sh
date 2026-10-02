@@ -16,6 +16,7 @@ Usage:
   gwt clone <url> [<dir>]          Clone a repo into a new workspace
   gwt switch <branch>              cd to a worktree, creating it if needed
   gwt switch -c <new> [<start>]    Create a branch and its worktree; cd to it
+  gwt switch -                     cd to the previous worktree
   gwt add <branch>                 Like switch, but stay where you are
   gwt add -c <new> [<start>]
   gwt remove [-f] <branch>         Remove a worktree, keeping its branch
@@ -43,9 +44,12 @@ Commands:
           `git switch -c`. <new> starts at <start>, or at the current
           HEAD. Fails if <new> already exists.
 
-  add     Takes the same arguments as switch and creates the same
-          worktree, without changing directory. Fails if the worktree
-          already exists.
+          `gwt switch -` goes back to the worktree that the last
+          `gwt switch` in this shell left. A plain cd is not tracked.
+
+  add     Takes the same arguments as switch, except -, and creates
+          the same worktree without changing directory. Fails if the
+          worktree already exists.
 
   remove  Removes <root>/<branch> with `git worktree remove`, which
           refuses if the worktree has uncommitted changes or untracked
@@ -69,6 +73,7 @@ Examples:
   gwt clone git@github.com:user/repo.git
   gwt switch -c fix-parser
   gwt switch jimmys-fork/jimmys-feature
+  gwt switch -
   gwt add release-1.2
   gwt remove fix-parser
   gwt list'
@@ -128,15 +133,26 @@ _gwt_clone() {
 
 # switch and add: $1 is which. Both make sure the worktree exists; only
 # switch changes directory, and only switch accepts an existing worktree.
+# $_gwt_prev is the worktree that the last switch in this shell left.
 _gwt_switch() {
-  local cmd="$1" create='' max=1 branch root start
+  local cmd="$1" usage='<branch> | -c <new> [<start>]' create='' max=1
+  local branch root start here
   shift
+  [ "$cmd" = add ] || usage="$usage | -"
   case ${1-} in -c|--create) create=1 max=2; shift ;; esac
   branch=${1-}
-  [ -n "$branch" ] && [ "${branch#-}" = "$branch" ] && [ $# -le "$max" ] ||
-    _gwt_err "usage: gwt $cmd (<branch> | -c <new> [<start>])" || return 1
+  [ -n "$branch" ] && [ $# -le "$max" ] && [ "${branch#-}" = "$branch" ] ||
+    [ "$cmd$create $*" = "switch -" ] ||
+    _gwt_err "usage: gwt $cmd ($usage)" || return 1
   root=$(_gwt_root) || return 1
-  if [ -n "$create" ]; then
+  if [ "$branch" = - ]; then
+    case ${_gwt_prev-} in
+      "$root"/*) branch=${_gwt_prev#"$root"/} ;;
+      *) _gwt_err "no previous worktree"; return 1 ;;
+    esac
+    [ -e "$root/$branch/.git" ] ||
+      _gwt_err "the previous worktree is gone: $branch" || return 1
+  elif [ -n "$create" ]; then
     shift
     # No -C: like `git switch -c`, the new branch starts at the current HEAD,
     # and <start> means what it means in the current worktree.
@@ -160,7 +176,9 @@ _gwt_switch() {
     git -C "$root" worktree add --track -b "$branch" "$root/$branch" "$start" || return 1
   fi
   [ "$cmd" = switch ] || return 0
-  builtin cd "$root/$branch"
+  here=$(git rev-parse --show-toplevel 2>/dev/null)
+  builtin cd "$root/$branch" || return 1
+  [ -z "$here" ] || [ "$here" = "$root/$branch" ] || _gwt_prev=$here
 }
 
 _gwt_remove() {
