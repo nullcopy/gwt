@@ -15,7 +15,7 @@ Usage:
   gwt init [<dir>]           Create an empty workspace
   gwt clone <url> [<dir>]    Clone a repo into a new workspace
   gwt add <branch>           Create a worktree for <branch>
-  gwt remove [-f] <branch>   Remove a worktree and delete its branch
+  gwt remove [-f] <branch>   Remove a worktree, keeping its branch
   gwt switch <branch>        cd to a worktree
   gwt help                   Show this help
   gwt <other> [<args>...]    Passed through to `git worktree`
@@ -35,11 +35,11 @@ Commands:
           the current HEAD. Never fetches. Works from anywhere in the
           workspace.
 
-  remove  Removes the worktree and deletes its local branch. Refuses if
-          the worktree has uncommitted changes, or the branch is not
-          merged into its upstream (into the default branch, if it has no
-          upstream). With -f, removes anyway and that work is lost. Never
-          removes the default branch.
+  remove  Removes <root>/<branch> with `git worktree remove`, which
+          refuses if the worktree has uncommitted changes or untracked
+          files. With -f, removes it anyway and those changes are lost.
+          The branch is kept: delete it with `git branch -d`, or get the
+          worktree back with `gwt add`.
 
   switch  Changes directory to <root>/<branch>.
 
@@ -142,35 +142,23 @@ _gwt_add() {
 }
 
 _gwt_remove() {
-  local force='' branch='' count=0 arg root wt target why=''
+  local branch='' count=0 arg root wt inside=''
   for arg in "$@"; do
-    case $arg in -f|--force) force=1 ;; *) branch=$arg; count=$((count + 1)) ;; esac
+    case $arg in -f|--force) ;; *) branch=$arg; count=$((count + 1)) ;; esac
   done
   [ "$count" -eq 1 ] && [ -n "$branch" ] && [ "${branch#-}" = "$branch" ] ||
     _gwt_err "usage: gwt remove [-f] <branch>" || return 1
   root=$(_gwt_root) || return 1
   wt=$root/$branch
-  [ "$branch" != "$(_gwt_default "$root")" ] ||
-    _gwt_err "refusing to remove the default branch '$branch'" || return 1
   [ -e "$wt/.git" ] || _gwt_err "no worktree for '$branch'" || return 1
-  if [ -z "$force" ]; then
-    # The checks `git worktree remove` and `git branch -d` would make, run
-    # up front so that either both are removed or neither is.
-    target=$(git -C "$root" rev-parse --abbrev-ref "${branch}@{upstream}" 2>/dev/null) ||
-      target=$(_gwt_default "$root")
-    if [ "$(git -C "$wt" symbolic-ref --quiet HEAD)" != "refs/heads/$branch" ]; then
-      why="the worktree does not have '$branch' checked out"
-    elif [ -n "$(git -C "$wt" status --porcelain --untracked-files=normal 2>&1)" ]; then
-      why="the worktree has uncommitted changes or untracked files"
-    elif ! git -C "$root" merge-base --is-ancestor "refs/heads/$branch" "$target" 2>/dev/null; then
-      why="the branch is not fully merged into '$target'"
-    fi
-    [ -z "$why" ] || _gwt_err "not removing '$branch': $why" \
-      "(to remove it anyway and lose that work: gwt remove -f $branch)" || return 1
-  fi
-  case "$(pwd -P)/" in "$wt"/*) builtin cd "$root" || return 1 ;; esac
-  git -C "$root" worktree remove ${force:+--force} "$wt" &&
-    git -C "$root" branch -d ${force:+--force} "$branch" || return 1
+  # Hand git the same arguments, with the branch replaced by its worktree.
+  for arg in "$@"; do
+    shift
+    case $arg in -f|--force) set -- "$@" "$arg" ;; *) set -- "$@" "$wt" ;; esac
+  done
+  case "$(pwd -P)/" in "$wt"/*) inside=1 ;; esac
+  git -C "$root" worktree remove "$@" || return 1
+  [ -z "$inside" ] || builtin cd "$root" || return 1
   while [ "${branch%/*}" != "$branch" ]; do # parents of a slash-named branch
     branch=${branch%/*}
     command rmdir "$root/$branch" 2>/dev/null || break

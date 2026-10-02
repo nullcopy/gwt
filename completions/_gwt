@@ -10,7 +10,7 @@ if (( CURRENT == 2 )); then
     'init:create an empty workspace'
     'clone:clone a repo into a new workspace'
     'add:create a worktree for a branch'
-    'remove:remove a worktree and delete its branch'
+    'remove:remove a worktree, keeping its branch'
     'switch:cd to a worktree'
     'help:show help'
     'list:list worktrees (git worktree list)'

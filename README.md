@@ -23,7 +23,7 @@ of `gwt clone`.
 gwt init [<dir>]           Create an empty workspace
 gwt clone <url> [<dir>]    Clone a repo into a new workspace
 gwt add <branch>           Create a worktree for <branch>
-gwt remove [-f] <branch>   Remove a worktree and delete its branch
+gwt remove [-f] <branch>   Remove a worktree, keeping its branch
 gwt switch <branch>        cd to a worktree
 gwt help                   Show this help
 gwt <other> [<args>...]    Passed through to `git worktree`
@@ -37,11 +37,9 @@ gwt <other> [<args>...]    Passed through to `git worktree`
   current HEAD. A remote branch can be named as `<remote>/<branch>`, or
   just `<branch>` when exactly one remote has it. Fetch first if you want
   the latest remote branches.
-- `remove` makes the checks `git worktree remove` and `git branch -d` make, but
-  before removing anything: it refuses a worktree with uncommitted changes
-  or untracked files, and a branch that is not merged into its upstream
-  (or into the default branch, if it has no upstream). `-f` removes it
-  anyway. The default branch is never removed.
+- `remove` runs `git worktree remove` on `<root>/<branch>`, so it refuses
+  a worktree with uncommitted changes or untracked files unless given
+  `-f`. It never deletes the branch; use `git branch -d` for that.
 - The default branch is the one `.bare`'s `HEAD` points at.
 - A branch named `feat/foo` lives at `<root>/feat/foo`.
 

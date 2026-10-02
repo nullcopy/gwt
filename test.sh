@@ -18,7 +18,6 @@ git config --global user.email 'gwt@example.invalid'
 git config --global init.defaultBranch not-the-default
 git config --global branch.autoSetupMerge false
 git config --global worktree.guessRemote true
-git config --global status.showUntrackedFiles no
 
 pass=0 fail=0
 
@@ -69,9 +68,9 @@ kept() { # kept <branch>: its worktree and local branch both still exist
   ok "$1: branch kept" git -C "$ws" show-ref --verify --quiet "refs/heads/$1"
 }
 
-gone() { # gone <branch>: its worktree and local branch are both gone
+gone() { # gone <branch>: its worktree is gone, and its local branch is kept
   no "$1: worktree removed" [ -e "$ws/$1" ]
-  no "$1: branch deleted" git -C "$ws" show-ref --verify --quiet "refs/heads/$1"
+  ok "$1: branch kept" git -C "$ws" show-ref --verify --quiet "refs/heads/$1"
 }
 
 # --- two remotes. origin's default branch is `trunk` (so nothing can assume
@@ -222,21 +221,27 @@ cd "$ws" || exit 1
 ok "switch: from the workspace root" gwt switch trunk
 is "switch: from the workspace root, directory" "$PWD" "$ws/trunk"
 
-# --- remove: clean branches, by `git branch -d`'s rule
-ok "remove: no upstream, merged into the default branch" gwt remove from-root
+# --- remove: the worktree goes, the branch stays
+ok "remove" gwt remove from-root
 gone from-root
-ok "remove: equal to its upstream" gwt remove late
+ok "remove: tracking branches" \
+  eval 'gwt remove late && gwt remove forked && gwt remove spare && gwt remove shared'
 gone late
-ok "remove: equal to its upstream on another remote" gwt remove forked
 gone forked
-ok "remove: remaining tracking branches" eval 'gwt remove spare && gwt remove shared'
 gone spare
 gone shared
-# `new` started at on-remote, which is ahead of trunk, and has no upstream.
-no "remove: refuses no upstream, not merged into the default branch" gwt remove new
-said "gwt remove -f new"
-kept new
-ok "remove -f: not merged" gwt remove -f new
+
+# --- remove: unmerged commits are not a reason to refuse; they stay on the branch
+commit "$ws/new" work
+work=$(git -C "$ws" rev-parse new)
+ok "remove: unmerged commits, inside the worktree" \
+  eval 'mkdir "$ws/new/deep" && cd "$ws/new/deep" && gwt remove new'
+gone new
+is "remove: from a subdirectory of the worktree, ends at the root" "$PWD" "$ws"
+is "remove: the branch keeps its commits" "$(git -C "$ws" rev-parse new)" "$work"
+ok "remove: add brings the worktree back" gwt add new
+ok "remove: the worktree is back with its commits" [ -f "$ws/new/work" ]
+ok "remove: again" gwt remove new
 gone new
 
 # --- remove: uncommitted changes, run from inside the worktree
@@ -244,7 +249,7 @@ ok "add dirty" gwt add dirty
 cd "$ws/dirty" || exit 1
 echo change >>one
 no "remove: refuses uncommitted changes" gwt remove dirty
-said "gwt remove -f dirty"
+said "--force"
 kept dirty
 is "remove: refusal does not cd" "$PWD" "$ws/dirty"
 ok "remove -f: uncommitted changes" gwt remove -f dirty
@@ -255,62 +260,39 @@ is "remove: from inside the worktree, ends at the root" "$PWD" "$ws"
 ok "add untracked" gwt add untracked
 echo new >"$ws/untracked/new-file"
 no "remove: refuses untracked files" gwt remove untracked
-said "gwt remove -f untracked"
+said "--force"
 kept untracked
-ok "remove <branch> -f: untracked files" gwt remove untracked -f
+ok "remove <branch> --force: untracked files" gwt remove untracked --force
 gone untracked
 
-# --- remove: unmerged commits, no upstream
-ok "add unmerged" gwt add unmerged
-commit "$ws/unmerged" work
-no "remove: refuses unmerged commits" gwt remove unmerged
-said "gwt remove -f unmerged"
-kept unmerged
-ok "remove --force: unmerged commits" gwt remove --force unmerged
-gone unmerged
-
-# --- remove: pushed to its upstream but not merged into the default branch
-ok "add pushed" gwt add pushed
-commit "$ws/pushed" work
-git -C "$ws/pushed" push -q -u origin pushed
-commit "$ws/pushed" more
-no "remove: refuses commits ahead of the upstream" gwt remove pushed
-kept pushed
-git -C "$ws/pushed" push -q origin pushed
-ok "remove: pushed to its upstream" gwt remove pushed
-gone pushed
-
-# --- remove: no upstream, so only a merge into the default branch counts
-ok "add merged" gwt add merged
-commit "$ws/merged" merged-file
-git -C "$ws/merged" push -q origin merged
-no "remove: pushed without an upstream is still unmerged" gwt remove merged
-kept merged
-git -C "$ws/trunk" merge -q --ff-only merged
-ok "remove: merged into the default branch, inside the worktree" \
-  eval 'mkdir "$ws/merged/deep" && cd "$ws/merged/deep" && gwt remove merged'
-gone merged
-is "remove: from a subdirectory of the worktree, ends at the root" "$PWD" "$ws"
-
-# --- remove: the default branch, and bad arguments
-no "remove: refuses the default branch" gwt remove trunk
-said "default branch"
-no "remove -f: refuses the default branch" gwt remove -f trunk
-said "default branch"
-kept trunk
-no "remove: unknown branch fails" gwt remove nope
-no "remove: no arguments" gwt remove
-no "remove: unknown flag" gwt remove -x on-remote
-kept on-remote
+# --- remove: a locked worktree needs -f twice, as in git
+ok "add locked" gwt add locked
+git -C "$ws" worktree lock "$ws/locked"
+no "remove: refuses a locked worktree" gwt remove locked
+no "remove -f: refuses a locked worktree" gwt remove -f locked
+kept locked
+ok "remove -f -f: a locked worktree" gwt remove -f -f locked
+gone locked
 
 # --- remove: a worktree that has another branch checked out
 ok "add moved" gwt add moved
 git -C "$ws/moved" switch -q --detach
-no "remove: refuses a worktree that is not on its branch" gwt remove moved
-said "gwt remove -f moved"
-kept moved
-ok "remove -f: worktree not on its branch" gwt remove -f moved
+ok "remove: a worktree that is not on its branch" gwt remove moved
 gone moved
+
+# --- remove: the default branch is a worktree like any other
+ok "remove: the default branch" gwt remove trunk
+gone trunk
+ok "remove: add the default branch back" gwt add trunk
+kept trunk
+mkdir "$ws/trunk/sub"
+
+# --- remove: bad arguments
+no "remove: unknown branch fails" gwt remove nope
+said "no worktree for 'nope'"
+no "remove: no arguments" gwt remove
+no "remove: unknown flag" gwt remove -x on-remote
+kept on-remote
 
 # --- branch names with slashes
 cd "$ws/trunk" || exit 1
@@ -349,7 +331,7 @@ is "candidates: worktrees" "$(_gwt_worktrees | sort)" \
 git -C "$seed" push -q origin trunk:unfetched
 is "candidates: branches of every remote without a worktree, without fetching" \
   "$(_gwt_remote_branches | sort -u)" \
-  "$(printf '%s\n' feat/remote forked late merged pushed shared spare)"
+  "$(printf '%s\n' feat/remote forked late shared spare)"
 
 # --- init: a workspace with no remote at all
 cd "$tmp" || exit 1
@@ -377,15 +359,9 @@ is "no remote: new branch starts at the current HEAD" \
 ok "no remote: switch" gwt switch topic
 is "no remote: switch directory" "$PWD" "$ws/topic"
 commit "$ws/topic" work
-no "no remote: remove refuses an unmerged branch" gwt remove topic
-said "gwt remove -f topic"
-kept topic
-git -C "$ws/not-the-default" merge -q --ff-only topic
-ok "no remote: remove a merged branch" gwt remove topic
+ok "no remote: remove" gwt remove topic
 gone topic
 is "no remote: remove from inside ends at the root" "$PWD" "$ws"
-no "no remote: remove -f refuses the default branch" gwt remove -f not-the-default
-said "default branch"
 is "no remote: worktree candidates" "$(_gwt_worktrees)" "not-the-default"
 is "no remote: no remote branch candidates" "$(_gwt_remote_branches)" ""
 
