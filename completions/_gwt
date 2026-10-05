@@ -3,14 +3,14 @@
 # so nothing is offered unless gwt.sh has been sourced.
 
 local -a items
-local expl ret=1
+local expl
 
 if (( CURRENT == 2 )); then
   items=(
     'init:create an empty workspace'
     'clone:clone a repo into a new workspace'
-    'switch:cd to a worktree, creating it if needed'
-    'add:create a worktree without changing directory'
+    'switch:cd to a worktree'
+    'add:create a worktree for a branch'
     'remove:remove a worktree, keeping its branch'
     'help:show help'
     'list:list worktrees (git worktree list)'
@@ -25,22 +25,26 @@ if (( CURRENT == 2 )); then
 fi
 
 case $words[2] in
-  switch|add)
+  switch)
+    (( CURRENT == 3 )) || return 1
+    if [[ $words[CURRENT] == -* ]]; then
+      items=('-:the previous worktree')
+      _describe -t options 'option' items
+      return
+    fi
+    items=(${(f)"$(_gwt_worktrees 2>/dev/null)"})
+    _wanted worktrees expl 'worktree' compadd -a items
+    ;;
+  add)
     # After -c come a new branch name and a start point: nothing to offer.
     (( CURRENT == 3 )) || return 1
     if [[ $words[CURRENT] == -* ]]; then
       items=('-c:create a new branch and its worktree')
-      [[ $words[2] == add ]] || items+=('-:the previous worktree')
       _describe -t options 'option' items
       return
     fi
-    if [[ $words[2] == switch ]]; then
-      items=(${(f)"$(_gwt_worktrees 2>/dev/null)"})
-      _wanted worktrees expl 'worktree' compadd -a items && ret=0
-    fi
     items=(${(f)"$(_gwt_branches 2>/dev/null)"})
-    _wanted branches expl 'branch without a worktree' compadd -a items && ret=0
-    return ret
+    _wanted branches expl 'branch without a worktree' compadd -a items
     ;;
   remove)
     if [[ $words[CURRENT] == -* ]]; then

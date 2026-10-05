@@ -20,32 +20,30 @@ of `gwt clone`.
 ## Usage
 
 ```
-gwt init [<dir>]                 Create an empty workspace
-gwt clone <url> [<dir>]          Clone a repo into a new workspace
-gwt switch <branch>              cd to a worktree, creating it if needed
-gwt switch -c <new> [<start>]    Create a branch and its worktree; cd to it
-gwt switch -                     cd to the previous worktree
-gwt add <branch>                 Like switch, but stay where you are
-gwt add -c <new> [<start>]
-gwt remove [-f] <branch>         Remove a worktree, keeping its branch
-gwt help                         Show this help
-gwt <other> [<args>...]          Passed through to `git worktree`
-                                 (list, move, prune, repair, lock, ...)
+gwt init [<dir>]              Create an empty workspace
+gwt clone <url> [<dir>]       Clone a repo into a new workspace
+gwt switch <branch>           cd to a worktree
+gwt switch -                  cd to the previous worktree
+gwt add <branch>              Create a worktree for an existing branch
+gwt add -c <new> [<start>]    Create a branch and its worktree
+gwt remove [-f] <branch>      Remove a worktree, keeping its branch
+gwt help                      Show this help
+gwt <other> [<args>...]       Passed through to `git worktree`
+                              (list, move, prune, repair, lock, ...)
 ```
 
 `gwt help` has the details. In short:
 
-- `switch` follows `git switch`, with a worktree in place of a checkout. It
-  changes directory to the branch's worktree, creating the worktree first
-  if the branch exists but has none: a local branch if there is one,
-  otherwise a remote branch, named as `<remote>/<branch>` or just
-  `<branch>` when exactly one remote has it. Fetch first if you want the
-  latest remote branches. A name that is not a branch is an error;
-  `switch -c` creates a new branch, from the current HEAD unless given a
-  start point. `switch -` goes back to the worktree that the last
-  `gwt switch` in this shell left.
-- `add` takes the same arguments and creates the same worktree, but does
-  not change directory.
+- `switch` changes directory to the branch's worktree, which must already
+  exist. `switch -` goes back to the worktree that the last `gwt switch` in
+  this shell left.
+- `add` creates the worktree for an existing branch, without changing
+  directory. It resolves the name the way `git switch` does: a local branch
+  if there is one, otherwise a remote branch, named as `<remote>/<branch>`
+  or just `<branch>` when exactly one remote has it. Fetch first if you
+  want the latest remote branches. A name that is not a branch is an error;
+  `add -c` creates a new branch, from the current HEAD unless given a start
+  point.
 - `remove` runs `git worktree remove` on `<root>/<branch>`, so it refuses
   a worktree with uncommitted changes or untracked files unless given
   `-f`. It never deletes the branch; use `git branch -d` for that.
