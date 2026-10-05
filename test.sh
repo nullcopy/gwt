@@ -186,6 +186,12 @@ is "add -c: new branch starts at that worktree's HEAD" \
   "$(git -C "$ws" rev-parse new)" "$(git -C "$ws" rev-parse on-remote)"
 no "add -c: new branch has no upstream" \
   git -C "$ws" rev-parse --verify --quiet 'new@{upstream}'
+ok "add -c <new> <start>" gwt add -c started trunk
+is "add -c <new> <start>: new branch starts there" \
+  "$(git -C "$ws" rev-parse started)" "$(git -C "$ws" rev-parse trunk)"
+ok "add --create" gwt add --create long-flag 'HEAD'
+is "add --create: <start> is resolved in the current worktree" \
+  "$(git -C "$ws" rev-parse long-flag)" "$(git -C "$ws" rev-parse on-remote)"
 cd "$ws" || exit 1
 ok "add -c: new branch, at the workspace root" gwt add -c from-root
 is "add -c: new branch starts at the default branch" \
@@ -230,36 +236,22 @@ said "no previous worktree"
 ok "switch" gwt switch on-remote
 is "switch: changes directory" "$PWD" "$ws/on-remote"
 no "switch: a name that is not a branch fails" gwt switch nope
-said "gwt switch -c nope"
+said "gwt add nope"
 is "switch: stays put on failure" "$PWD" "$ws/on-remote"
 no "switch: a name that is not a branch creates nothing" [ -e "$ws/nope" ]
 no "switch: no arguments" gwt switch
 no "switch: too many arguments" gwt switch trunk late
 is "switch: stays put on bad arguments" "$PWD" "$ws/on-remote"
 
-# --- switch: a branch without a worktree gets one
-ok "switch: branch on one remote" gwt switch via-switch
-is "switch: changes directory to the new worktree" "$PWD" "$ws/via-switch"
-is "switch: remote branch is tracked" \
-  "$(git -C "$ws" rev-parse --abbrev-ref 'via-switch@{upstream}')" "origin/via-switch"
-
-# --- switch -c. A new branch starts at the current HEAD, like `git switch -c`.
-cd "$ws/on-remote" || exit 1
-ok "switch -c" gwt switch -c created
-is "switch -c: changes directory" "$PWD" "$ws/created"
-is "switch -c: new branch starts at the HEAD it was run from" \
-  "$(git -C "$ws" rev-parse created)" "$(git -C "$ws" rev-parse on-remote)"
-ok "switch -c <new> <start>" gwt switch -c started trunk
-is "switch -c <new> <start>: changes directory" "$PWD" "$ws/started"
-is "switch -c <new> <start>: new branch starts there" \
-  "$(git -C "$ws" rev-parse started)" "$(git -C "$ws" rev-parse trunk)"
-ok "switch --create" gwt switch --create long-flag 'HEAD'
-is "switch --create: <start> is resolved in the current worktree" \
-  "$(git -C "$ws" rev-parse long-flag)" "$(git -C "$ws" rev-parse started)"
-no "switch -c: existing branch fails" gwt switch -c trunk
-said "already exists"
-is "switch -c: stays put on failure" "$PWD" "$ws/long-flag"
-no "switch -c: no name" gwt switch -c
+# --- switch: a branch without a worktree is not given one
+no "switch: branch without a worktree fails" gwt switch via-switch
+said "gwt add via-switch"
+no "switch: branch without a worktree creates nothing" [ -e "$ws/via-switch" ]
+no "switch: branch without a worktree creates no local branch" \
+  git -C "$ws" show-ref --verify --quiet refs/heads/via-switch
+is "switch: stays put when there is no worktree" "$PWD" "$ws/on-remote"
+no "switch -c" gwt switch -c created
+no "switch -c: creates nothing" [ -e "$ws/created" ]
 cd "$ws" || exit 1
 ok "switch: from the workspace root" gwt switch trunk
 is "switch: from the workspace root, directory" "$PWD" "$ws/trunk"
@@ -285,7 +277,8 @@ is "switch -: back to where the cd went" "$PWD" "$ws/late"
 cd "$ws" || exit 1
 ok "switch -: from the workspace root" gwt switch -
 is "switch -: from the workspace root, directory" "$PWD" "$ws/trunk"
-ok "switch -c: is remembered" eval 'gwt switch -c fleeting && gwt switch -'
+ok "switch: a new worktree is remembered" \
+  eval 'gwt add -c fleeting && gwt switch fleeting && gwt switch -'
 is "switch -: back from a new worktree" "$PWD" "$ws/trunk"
 ok "switch -: to the new worktree" gwt switch -
 git -C "$ws" worktree remove "$ws/trunk"
@@ -294,7 +287,7 @@ said "is gone"
 is "switch -: stays put when it is gone" "$PWD" "$ws/fleeting"
 git -C "$ws" worktree add -q "$ws/trunk" trunk 2>/dev/null
 mkdir "$ws/trunk/sub"
-no "switch -c -" gwt switch -c -
+no "add -c -" gwt add -c -
 no "switch - <extra>" gwt switch - trunk
 no "add -" gwt add -
 ok "switch: back to the default branch" gwt switch trunk
@@ -302,11 +295,8 @@ ok "switch: back to the default branch" gwt switch trunk
 # --- remove: the worktree goes, the branch stays
 ok "remove" gwt remove from-root
 gone from-root
-ok "remove: worktrees made by switch" eval \
-  'gwt remove via-switch && gwt remove created && gwt remove started &&
-    gwt remove long-flag && gwt remove fleeting'
-gone via-switch
-gone created
+ok "remove: several in a row" \
+  eval 'gwt remove started && gwt remove long-flag && gwt remove fleeting'
 gone started
 gone long-flag
 gone fleeting
@@ -419,7 +409,7 @@ is "candidates: worktrees" "$(_gwt_worktrees | sort)" \
 git -C "$seed" push -q origin trunk:unfetched
 is "candidates: branches without a worktree, local or on a remote, without fetching" \
   "$(_gwt_branches)" \
-  "$(printf '%s\n' a/b/c created dirty feat/new feat/remote fleeting forked from-root \
+  "$(printf '%s\n' a/b/c dirty feat/new feat/remote fleeting forked from-root \
     late locked long-flag moved new shared spare started untracked via-switch)"
 
 # --- init: a workspace with no remote at all
@@ -455,7 +445,7 @@ gone topic
 is "no remote: remove from inside ends at the root" "$PWD" "$ws"
 is "no remote: worktree candidates" "$(_gwt_worktrees)" "not-the-default"
 is "no remote: branch candidates" "$(_gwt_branches)" "topic"
-ok "no remote: switch brings the worktree back" gwt switch topic
+ok "no remote: add brings the worktree back" eval 'gwt add topic && gwt switch topic'
 is "no remote: switch to a local branch, directory" "$PWD" "$ws/topic"
 ok "no remote: the worktree is back with its commits" [ -f "$ws/topic/work" ]
 
