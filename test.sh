@@ -153,6 +153,18 @@ ok "clone: relative path still fetches" git -C "$tmp/relative/trunk" fetch -q or
 no "clone: bad url fails" gwt clone "$tmp/missing.git" bad
 no "clone: bad url leaves nothing behind" [ -e "$tmp/bad" ]
 no "clone: no arguments" gwt clone
+git init -q --bare "$tmp/empty.git"
+ok "clone: empty remote succeeds" gwt clone "$tmp/empty.git" empty
+said "cloned an empty repository"
+ok "clone: empty remote keeps .bare" [ -f "$tmp/empty/.bare/HEAD" ]
+is "clone: empty remote creates no worktree" \
+  "$(git -C "$tmp/empty" worktree list --porcelain | grep -c '^worktree ')" "1"
+cd "$tmp/empty" || exit 1
+ok "clone: empty remote then add -c" gwt add -c first
+ok "clone: empty remote then add -c: worktree" [ -e "$tmp/empty/first/.git" ]
+is "clone: empty remote then add -c: unborn branch" \
+  "$(git -C "$tmp/empty/first" symbolic-ref HEAD)" "refs/heads/first"
+cd "$tmp" || exit 1
 
 # --- add, from a subdirectory of a worktree
 git -C "$seed" switch -q -c late

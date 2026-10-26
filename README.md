@@ -13,7 +13,8 @@ repository in `.bare`, and one directory per branch next to it.
 
 `gwt` is a shell function, not an executable, because `gwt switch` changes
 the directory of your shell. It works in zsh and bash and depends only on
-git (2.31 or newer; `gwt init` needs 2.42). It does not expect a remote:
+git (2.31 or newer; `gwt init`, and the first branch of an empty clone,
+need 2.42). It does not expect a remote:
 a workspace can have none, one, or several, and gwt never fetches outside
 of `gwt clone`.
 
