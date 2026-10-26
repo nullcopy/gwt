@@ -24,7 +24,7 @@ stdenvNoCC.mkDerivation {
   meta = {
     description = "Git worktree wrappers for the .bare workspace layout";
     homepage = "https://github.com/nullcopy/gwt";
-    license = lib.licenses.mit;
+    license = lib.licenses.agpl3Plus;
     platforms = lib.platforms.unix;
   };
 }
