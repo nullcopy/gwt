@@ -114,4 +114,4 @@ tests are offline and work in a temporary directory.
 
 ## License
 
-MIT
+This project is licensed under the [GNU General Public License v3.0 or later](LICENSE) (`GPL-3.0-or-later`).
