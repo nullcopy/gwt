@@ -29,7 +29,8 @@ Commands:
           current directory.
 
   clone   Creates <dir>/.bare, a .git file pointing at it, and a worktree
-          for the default branch. <dir> defaults to the repo name.
+          for the default branch. <dir> defaults to the repo name. An
+          empty repo gets no worktree; start one with `gwt add -c`.
 
   switch  Changes directory to <root>/<branch>, which must already
           exist: switch never creates a worktree. Works from anywhere
@@ -116,15 +117,22 @@ _gwt_clone() {
   case $url in /*) ;; *) [ ! -e "$url" ] || url=$PWD/$url ;; esac
   # Not `git clone --bare`: it omits the fetch refspec for remote-tracking
   # branches and creates a local branch for every remote branch.
-  _gwt_bare "$dir" &&
+  if _gwt_bare "$dir" &&
     git -C "$dir" remote add origin "$url" &&
-    git -C "$dir" fetch origin &&
+    git -C "$dir" fetch origin; then
+    # An empty remote has no default branch to check out. Like `git clone`,
+    # succeed with a warning; `gwt add -c` then starts an orphan branch.
+    if [ -z "$(git -C "$dir" for-each-ref --count=1 refs/remotes/origin)" ]; then
+      printf 'gwt: cloned an empty repository; no worktree created (to start one: gwt add -c <branch>)\n' >&2
+      return 0
+    fi
     git -C "$dir" remote set-head origin --auto &&
-    default=$(git -C "$dir" symbolic-ref --quiet refs/remotes/origin/HEAD) &&
-    default=${default#refs/remotes/origin/} &&
-    git -C "$dir" symbolic-ref HEAD "refs/heads/$default" &&
-    git -C "$dir" worktree add --track -b "$default" "$default" "origin/$default" &&
-    return 0
+      default=$(git -C "$dir" symbolic-ref --quiet refs/remotes/origin/HEAD) &&
+      default=${default#refs/remotes/origin/} &&
+      git -C "$dir" symbolic-ref HEAD "refs/heads/$default" &&
+      git -C "$dir" worktree add --track -b "$default" "$default" "origin/$default" &&
+      return 0
+  fi
   command rm -rf -- "$dir"
   _gwt_err "clone failed"
 }
