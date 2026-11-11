@@ -74,8 +74,9 @@ gone() { # gone <branch>: its worktree is gone, and its local branch is kept
 }
 
 # --- two remotes. origin's default branch is `trunk` (so nothing can assume
-# `main`); it also has on-remote, spare, via-switch, feat/remote and shared. fork has
-# forked and shared. $seed is a plain repository used to push to both.
+# `main`); it also has on-remote, spare, via-switch, feat/remote, feat/paperplane
+# and shared. fork has forked and shared. $seed is a plain repository used to push
+# to both.
 remote=$tmp/remote.git fork=$tmp/fork.git seed=$tmp/seed ws=$tmp/remote
 git init -q --bare -b trunk "$remote"
 git init -q --bare -b trunk "$fork"
@@ -85,11 +86,12 @@ commit "$seed" one
 git -C "$seed" branch spare
 git -C "$seed" branch via-switch
 git -C "$seed" branch feat/remote
+git -C "$seed" branch feat/paperplane
 git -C "$seed" branch shared
 git -C "$seed" switch -q -c on-remote
 commit "$seed" two
 git -C "$seed" switch -q trunk
-git -C "$seed" push -q origin trunk spare via-switch feat/remote shared on-remote
+git -C "$seed" push -q origin trunk spare via-switch feat/remote feat/paperplane shared on-remote
 git -C "$seed" push -q "$fork" trunk shared trunk:forked
 
 # --- sourcing: an existing `gwt` alias is replaced by the function
@@ -240,6 +242,36 @@ no "add: ambiguous name creates nothing" [ -e "$ws/shared" ]
 ok "add: qualified name resolves the ambiguity" gwt add fork/shared
 is "add: qualified name tracks the named remote" \
   "$(git -C "$ws" rev-parse --abbrev-ref 'shared@{upstream}')" "fork/shared"
+
+# --- add with a custom directory
+ok "add <dir> <branch>" gwt add paperplane origin/feat/paperplane
+ok "add <dir>: worktree uses the custom directory" [ -e "$ws/paperplane/.git" ]
+no "add <dir>: worktree does not use the branch path" [ -e "$ws/feat/paperplane" ]
+is "add <dir>: local branch keeps its name" \
+  "$(git -C "$ws/paperplane" symbolic-ref HEAD)" "refs/heads/feat/paperplane"
+is "add <dir>: local branch tracks the remote branch" \
+  "$(git -C "$ws" rev-parse --abbrev-ref 'feat/paperplane@{upstream}')" "origin/feat/paperplane"
+is "add <dir>: remote branch checked out" \
+  "$(git -C "$ws/paperplane" rev-parse HEAD)" "$(git -C "$ws" rev-parse origin/feat/paperplane)"
+is "add <dir>: worktree candidates use the custom directory" \
+  "$(_gwt_worktrees | grep -F paperplane)" "paperplane"
+is "add <dir>: branch candidates omit a branch with a custom worktree" \
+  "$(_gwt_branches | grep -F feat/paperplane)" ""
+ok "add <dir>: switch uses the custom directory" gwt switch paperplane
+is "add <dir>: switch directory" "$PWD" "$ws/paperplane"
+cd "$ws" || exit 1
+ok "add <dir>: remove uses the custom directory" gwt remove paperplane
+no "add <dir>: custom worktree removed" [ -e "$ws/paperplane" ]
+ok "add <dir>: full branch name kept" \
+  git -C "$ws" show-ref --verify --quiet refs/heads/feat/paperplane
+is "add <dir>: branch offered again after removal" \
+  "$(_gwt_branches | grep -F feat/paperplane)" "feat/paperplane"
+no "add <dir>: missing branch fails" gwt add short origin/no-such-branch
+no "add <dir>: missing branch creates no directory" [ -e "$ws/short" ]
+no "add <dir>: empty directory fails" gwt add '' origin/feat/paperplane
+no "add <dir>: absolute directory fails" gwt add "$tmp/outside" origin/feat/paperplane
+no "add <dir>: parent directory fails" gwt add ../outside origin/feat/paperplane
+no "add <dir>: too many arguments" gwt add short origin/feat/paperplane extra
 
 # --- switch: an existing worktree
 cd "$ws/trunk/sub" || exit 1
@@ -421,7 +453,7 @@ is "candidates: worktrees" "$(_gwt_worktrees | sort)" \
 git -C "$seed" push -q origin trunk:unfetched
 is "candidates: branches without a worktree, local or on a remote, without fetching" \
   "$(_gwt_branches)" \
-  "$(printf '%s\n' a/b/c dirty feat/new feat/remote fleeting forked from-root \
+  "$(printf '%s\n' a/b/c dirty feat/new feat/paperplane feat/remote fleeting forked from-root \
     late locked long-flag moved new shared spare started untracked via-switch)"
 
 # --- init: a workspace with no remote at all

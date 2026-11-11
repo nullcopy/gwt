@@ -14,11 +14,11 @@ _gwt_help() {
 Usage:
   gwt init [<dir>]              Create an empty workspace
   gwt clone <url> [<dir>]       Clone a repo into a new workspace
-  gwt switch <branch>           cd to a worktree
+  gwt switch <worktree>         cd to a worktree
   gwt switch -                  cd to the previous worktree
-  gwt add <branch>              Create a worktree for an existing branch
+  gwt add [<dir>] <branch>      Create a worktree for an existing branch
   gwt add -c <new> [<start>]    Create a branch and its worktree
-  gwt remove [-f] <branch>      Remove a worktree, keeping its branch
+  gwt remove [-f] <worktree>    Remove a worktree, keeping its branch
   gwt help                      Show this help
   gwt <other> [<args>...]       Passed through to `git worktree`
                                 (list, move, prune, repair, lock, ...)
@@ -32,7 +32,7 @@ Commands:
           for the default branch. <dir> defaults to the repo name. An
           empty repo gets no worktree; start one with `gwt add -c`.
 
-  switch  Changes directory to <root>/<branch>, which must already
+  switch  Changes directory to <root>/<worktree>, which must already
           exist: switch never creates a worktree. Works from anywhere
           in the workspace.
 
@@ -47,11 +47,15 @@ Commands:
           already exists. Never fetches, and never changes directory.
           Works from anywhere in the workspace.
 
+          With <dir>, creates <root>/<dir> instead, keeping the branch
+          name unchanged. <dir> is relative to the workspace root.
+          switch and remove use this directory name.
+
           With -c, creates the branch <new> and its worktree, like
           `git switch -c`. <new> starts at <start>, or at the current
           HEAD. Fails if <new> already exists.
 
-  remove  Removes <root>/<branch> with `git worktree remove`, which
+  remove  Removes <root>/<worktree> with `git worktree remove`, which
           refuses if the worktree has uncommitted changes or untracked
           files. With -f, removes it anyway and those changes are lost.
           The branch is kept: delete it with `git branch -d`, or get the
@@ -73,6 +77,7 @@ Examples:
   gwt add -c fix-parser
   gwt switch fix-parser
   gwt add jimmys-fork/jimmys-feature
+  gwt add paperplane origin/feat/paperplane
   gwt switch -
   gwt remove fix-parser
   gwt list'
@@ -162,11 +167,21 @@ _gwt_switch() {
 
 # Create a worktree without changing directory.
 _gwt_add() {
-  local branch root start='' create='' max=1
+  local branch dir='' root start='' create='' max=1
   case ${1-} in -c|--create) create=1 max=2; shift ;; esac
   branch=${1-}
+  if [ -z "$create" ] && [ $# -eq 2 ]; then
+    dir=$1 branch=$2
+    [ -n "$dir" ] || _gwt_err "<dir> must not be empty" || return 1
+    shift
+  fi
   [ -n "$branch" ] && [ $# -le "$max" ] && [ "${branch#-}" = "$branch" ] ||
-    _gwt_err "usage: gwt add (<branch> | -c <new> [<start>])" || return 1
+    _gwt_err "usage: gwt add ([<dir>] <branch> | -c <new> [<start>])" || return 1
+  if [ -n "$dir" ]; then
+    case $dir in
+      -*|/*|..|../*|*/..|*/../*) _gwt_err "<dir> must be a relative path inside the workspace"; return 1 ;;
+    esac
+  fi
   root=$(_gwt_root) || return 1
   # Resolve the name as `git switch` would: local branch, then remote branch.
   if [ -z "$create" ] && ! git -C "$root" show-ref --verify --quiet "refs/heads/$branch"; then
@@ -180,16 +195,17 @@ _gwt_add() {
       esac
     fi
   fi
-  [ ! -e "$root/$branch/.git" ] || _gwt_err "worktree already exists: $root/$branch" || return 1
+  [ -n "$dir" ] || dir=$branch
+  [ ! -e "$root/$dir/.git" ] || _gwt_err "worktree already exists: $root/$dir" || return 1
   if [ -n "$create" ]; then
     shift
     # No -C: like `git switch -c`, the new branch starts at the current HEAD,
     # and <start> means what it means in the current worktree.
-    git worktree add -b "$branch" "$root/$branch" "$@"
+    git worktree add -b "$branch" "$root/$dir" "$@"
   elif [ -n "$start" ]; then
-    git -C "$root" worktree add --track -b "$branch" "$root/$branch" "$start"
+    git -C "$root" worktree add --track -b "$branch" "$root/$dir" "$start"
   else
-    git -C "$root" worktree add "$root/$branch" "$branch"
+    git -C "$root" worktree add "$root/$dir" "$branch"
   fi
 }
 
@@ -232,15 +248,26 @@ _gwt_worktrees() {
 
 # Branches without a worktree, local or on any remote.
 _gwt_branches() {
-  local root ref
+  local root ref line checked_out
   root=$(_gwt_root 2>/dev/null) || return 1
+  checked_out=$(git -C "$root" worktree list --porcelain | while IFS= read -r line; do
+    case $line in branch\ refs/heads/*) printf '%s\n' "${line#branch refs/heads/}" ;; esac
+  done)
   git -C "$root" for-each-ref --format='%(refname)' refs/heads refs/remotes |
     while IFS= read -r ref; do
       case $ref in
         refs/heads/*) ref=${ref#refs/heads/} ;;
         *) ref=${ref#refs/remotes/*/} ;;
       esac
-      [ "$ref" = HEAD ] || [ -e "$root/$ref" ] || printf '%s\n' "$ref"
+      [ "$ref" = HEAD ] && continue
+      case "
+$checked_out
+" in
+        *"
+$ref
+"*) ;;
+        *) printf '%s\n' "$ref" ;;
+      esac
     done | sort -u
 }
 
