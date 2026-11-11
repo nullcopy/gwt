@@ -23,11 +23,11 @@ of `gwt clone`.
 ```
 gwt init [<dir>]              Create an empty workspace
 gwt clone <url> [<dir>]       Clone a repo into a new workspace
-gwt switch <branch>           cd to a worktree
+gwt switch <worktree>         cd to a worktree
 gwt switch -                  cd to the previous worktree
-gwt add <branch>              Create a worktree for an existing branch
+gwt add [<dir>] <branch>      Create a worktree for an existing branch
 gwt add -c <new> [<start>]    Create a branch and its worktree
-gwt remove [-f] <branch>      Remove a worktree, keeping its branch
+gwt remove [-f] <worktree>    Remove a worktree, keeping its branch
 gwt help                      Show this help
 gwt <other> [<args>...]       Passed through to `git worktree`
                               (list, move, prune, repair, lock, ...)
@@ -45,11 +45,17 @@ gwt <other> [<args>...]       Passed through to `git worktree`
   want the latest remote branches. A name that is not a branch is an error;
   `add -c` creates a new branch, from the current HEAD unless given a start
   point.
-- `remove` runs `git worktree remove` on `<root>/<branch>`, so it refuses
+- `add <dir> <branch>` puts the worktree at `<root>/<dir>` without renaming
+  the branch. For example, `gwt add paperplane origin/feat/paperplane`
+  creates `paperplane` on local branch `feat/paperplane`, tracking
+  `origin/feat/paperplane`. Use `gwt switch paperplane` and
+  `gwt remove paperplane` for that worktree.
+- `remove` runs `git worktree remove` on `<root>/<worktree>`, so it refuses
   a worktree with uncommitted changes or untracked files unless given
   `-f`. It never deletes the branch; use `git branch -d` for that.
 - The default branch is the one `.bare`'s `HEAD` points at.
-- A branch named `feat/foo` lives at `<root>/feat/foo`.
+- Unless `<dir>` is given, a branch named `feat/foo` lives at
+  `<root>/feat/foo`.
 
 ## Install
 
